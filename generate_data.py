@@ -38,7 +38,7 @@ NUM_CUSTOMERS = 200
 NUM_PRODUCTS_A = 100
 NUM_ORDERS_A = 500
 
-NUM_CLIENTS = 150
+NUM_CLIENTS = 300
 NUM_ITEMS_B = 80
 NUM_PURCHASES_B = 400
 
@@ -46,13 +46,13 @@ NUM_KAFKA_CLICKSTREAM_EVENTS = 1000
 
 fake = Faker()
 
-PrimeGoods_customer_ids = []
-PrimeGoods_product_ids = []
-PrimeGoods_order_ids = []
+primegoods_customer_ids = []
+primegoods_product_ids = []
+primegoods_order_ids = []
 
-ElectroWorld_client_uuids = []
-ElectroWorld_item_skus = []
-ElectroWorld_purchase_guids = []
+electroworld_client_uuids = []
+electroworld_item_skus = []
+electroworld_purchase_guids = []
 
 
 def get_pg_connection() -> psycopg2.extensions.connection:
@@ -69,41 +69,54 @@ def setup_postgres_schemas(conn: psycopg2.extensions.connection):
     with conn.cursor() as cur:
         print("Создание схем и таблиц для магазинов A и B...")
         # Схема A
-        cur.execute("CREATE SCHEMA IF NOT EXISTS PrimeGoods;")
+        cur.execute("CREATE SCHEMA IF NOT EXISTS primegoods;")
+
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS PrimeGoods.customers (
+            drop table if exists primegoods.customers;
+            drop table if exists primegoods.products;
+            drop table if exists primegoods.orders;
+            drop table if exists primegoods.order_items;       
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS primegoods.customers (
                 customer_id SERIAL PRIMARY KEY, first_name VARCHAR, last_name VARCHAR,
                 email VARCHAR, registration_date DATE, address TEXT
             );
-            CREATE TABLE IF NOT EXISTS PrimeGoods.products (
+            CREATE TABLE IF NOT EXISTS primegoods.products (
                 product_id SERIAL PRIMARY KEY, product_name VARCHAR, category VARCHAR,
                 price DECIMAL(10, 2), created_at TIMESTAMP
             );
-            CREATE TABLE IF NOT EXISTS PrimeGoods.orders (
+            CREATE TABLE IF NOT EXISTS primegoods.orders (
                 order_id SERIAL PRIMARY KEY, customer_id INTEGER, order_date TIMESTAMP,
                 status VARCHAR, total_amount DECIMAL(10, 2)
             );
-            CREATE TABLE IF NOT EXISTS PrimeGoods.order_items (
+            CREATE TABLE IF NOT EXISTS primegoods.order_items (
                 order_item_id SERIAL PRIMARY KEY, order_id INTEGER, product_id INTEGER,
                 quantity INTEGER, price_per_unit DECIMAL(10, 2)
             );
         """)
         # Схема B
-        cur.execute("CREATE SCHEMA IF NOT EXISTS ElectroWorld;")
+        cur.execute("CREATE SCHEMA IF NOT EXISTS electroworld;")
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS ElectroWorld.clients (
+            drop table if exists primegoods.clients;
+            drop table if exists primegoods.items;
+            drop table if exists primegoods.purchases;
+            drop table if exists primegoods.purchase_details;       
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS electroworld.clients (
                 client_uuid UUID PRIMARY KEY, name VARCHAR, email VARCHAR,
                 signup_ts TIMESTAMP WITH TIME ZONE, shipping_info JSONB
             );
-            CREATE TABLE IF NOT EXISTS ElectroWorld.items (
+            CREATE TABLE IF NOT EXISTS electroworld.items (
                 item_sku VARCHAR PRIMARY KEY, item_title VARCHAR, department VARCHAR,
                 cost NUMERIC, specs JSONB
             );
-            CREATE TABLE IF NOT EXISTS ElectroWorld.purchases (
+            CREATE TABLE IF NOT EXISTS electroworld.purchases (
                 purchase_guid UUID PRIMARY KEY, client_ref UUID, purchase_timestamp TIMESTAMP WITH TIME ZONE,
                 state INTEGER, total_usd NUMERIC
             );
-            CREATE TABLE IF NOT EXISTS ElectroWorld.purchase_details (
+            CREATE TABLE IF NOT EXISTS electroworld.purchase_details (
                 id BIGSERIAL PRIMARY KEY, purchase_guid UUID, item_sku VARCHAR,
                 amount INTEGER, price NUMERIC
             );
@@ -111,46 +124,52 @@ def setup_postgres_schemas(conn: psycopg2.extensions.connection):
         conn.commit()
     print("Схемы и таблицы успешно созданы.")
 
-def generate_PrimeGoods_data(conn: psycopg2.extensions.connection):
+def generate_primegoods_data(conn: psycopg2.extensions.connection):
     """Генерация данных для магазина A"""
+
+    import psycopg2.extras
+
+    # call it in any place of your program
+    # before working with UUID objects in PostgreSQL
+    psycopg2.extras.register_uuid()
     with conn.cursor() as cur:
-        print("Генерация данных для магазина A (PrimeGoods)...")
+        print("Генерация данных для магазина A (primegoods)...")
         # Customers
         customers = []
         for i in range(1, NUM_CUSTOMERS + 1):
-            PrimeGoods_customer_ids.append(i)
+            primegoods_customer_ids.append(i)
             customers.append((
                 i, fake.first_name(), fake.last_name(), fake.email(),
                 fake.date_between(start_date='-2y', end_date='today'), fake.address()
             ))
-        cur.executemany("INSERT INTO PrimeGoods.customers VALUES (%s, %s, %s, %s, %s, %s)", customers)
+        cur.executemany("INSERT INTO primegoods.customers VALUES (%s, %s, %s, %s, %s, %s)", customers)
 
         # Products
         products = []
         categories = ['Books', 'Home & Kitchen', 'Clothing', 'Electronics', 'Toys']
         for i in range(1, NUM_PRODUCTS_A + 1):
-            PrimeGoods_product_ids.append(i)
+            primegoods_product_ids.append(i)
             products.append((
                 i, f"Product Name {i}", random.choice(categories),
                 Decimal(random.uniform(5.0, 500.0)), fake.past_datetime(start_date='-2y')
             ))
-        cur.executemany("INSERT INTO PrimeGoods.products VALUES (%s, %s, %s, %s, %s)", products)
+        cur.executemany("INSERT INTO primegoods.products VALUES (%s, %s, %s, %s, %s)", products)
 
         # Orders & Order Items
         orders = []
         order_items = []
         for i in range(1, NUM_ORDERS_A + 1):
-            PrimeGoods_order_ids.append(i)
-            customer_id = random.choice(PrimeGoods_customer_ids)
+            primegoods_order_ids.append(i)
+            customer_id = random.choice(primegoods_customer_ids)
             order_date = fake.date_time_between(start_date='-1y', end_date='now', tzinfo=timezone.utc)
             total_amount = Decimal(0)
 
             # Generate order items for this order
             num_items_in_order = random.randint(1, 5)
             for _ in range(num_items_in_order):
-                product_id = random.choice(PrimeGoods_product_ids)
+                product_id = random.choice(primegoods_product_ids)
                 # Fetch product price - in a real scenario this might be complex
-                cur.execute("SELECT price FROM PrimeGoods.products WHERE product_id = %s", (product_id,))
+                cur.execute("SELECT price FROM primegoods.products WHERE product_id = %s", (product_id,))
                 row = cur.fetchone()
                 price = 0
                 if row:
@@ -167,54 +186,54 @@ def generate_PrimeGoods_data(conn: psycopg2.extensions.connection):
                 total_amount
             ))
 
-        cur.executemany("INSERT INTO PrimeGoods.orders VALUES (%s, %s, %s, %s, %s)", orders)
-        cur.executemany("INSERT INTO PrimeGoods.order_items (order_id, product_id, quantity, price_per_unit) VALUES (%s, %s, %s, %s)", order_items)
+        cur.executemany("INSERT INTO primegoods.orders VALUES (%s, %s, %s, %s, %s)", orders)
+        cur.executemany("INSERT INTO primegoods.order_items (order_id, product_id, quantity, price_per_unit) VALUES (%s, %s, %s, %s)", order_items)
         conn.commit()
     print(f"Магазин A: {len(customers)} клиентов, {len(products)} товаров, {len(orders)} заказов сгенерировано.")
 
 
-def generate_ElectroWorld_data(conn: psycopg2.extensions.connection):
+def generate_electroworld_data(conn: psycopg2.extensions.connection):
     """Генерация данных для магазина B"""
     with conn.cursor() as cur:
-        print("Генерация данных для магазина B (ElectroWorld)...")
+        print("Генерация данных для магазина B (electroworld)...")
         # Clients
         clients = []
         for _ in range(NUM_CLIENTS):
             client_uuid = uuid.uuid4()
-            ElectroWorld_client_uuids.append(client_uuid)
+            electroworld_client_uuids.append(client_uuid)
             clients.append((
                 client_uuid, fake.name(), fake.email(),
                 fake.date_time_between(start_date='-2y', end_date='now', tzinfo=timezone.utc),
                 json.dumps({"city": fake.city(), "street": fake.street_address(), "zip": fake.zipcode()})
             ))
-        cur.executemany("INSERT INTO ElectroWorld.clients VALUES (%s, %s, %s, %s, %s)", clients)
+        cur.executemany("INSERT INTO electroworld.clients VALUES (%s, %s, %s, %s, %s)", clients)
 
         # Items
         items = []
         departments = ['Smartphones', 'Laptops', 'Audio', 'Accessories']
         for i in range(NUM_ITEMS_B):
             sku = f"ELEC-{str(i+1).zfill(4)}"
-            ElectroWorld_item_skus.append(sku)
+            electroworld_item_skus.append(sku)
             items.append((
                 sku, f"Electronic Item {sku}", random.choice(departments),
                 Decimal(random.uniform(50.0, 2000.0)),
                 json.dumps({"ram": f"{random.choice([4,8,16,32])}GB", "storage": f"{random.choice([128,256,512,1024])}GB"})
             ))
-        cur.executemany("INSERT INTO ElectroWorld.items VALUES (%s, %s, %s, %s, %s)", items)
+        cur.executemany("INSERT INTO electroworld.items VALUES (%s, %s, %s, %s, %s)", items)
 
         purchases = []
         purchase_details = []
         for _ in range(NUM_PURCHASES_B):
             purchase_guid = uuid.uuid4()
-            ElectroWorld_purchase_guids.append(purchase_guid)
-            client_ref = random.choice(ElectroWorld_client_uuids)
+            electroworld_purchase_guids.append(purchase_guid)
+            client_ref = random.choice(electroworld_client_uuids)
             purchase_ts = fake.date_time_between(start_date='-1y', end_date='now', tzinfo=timezone.utc)
             total_usd = Decimal(0)
 
             num_items_in_purchase = random.randint(1, 3)
             for _ in range(num_items_in_purchase):
-                item_sku = random.choice(ElectroWorld_item_skus)
-                cur.execute("SELECT cost FROM ElectroWorld.items WHERE item_sku = %s", (item_sku,))
+                item_sku = random.choice(electroworld_item_skus)
+                cur.execute("SELECT cost FROM electroworld.items WHERE item_sku = %s", (item_sku,))
                 row = cur.fetchone()
                 price = 0
                 if row:
@@ -230,8 +249,8 @@ def generate_ElectroWorld_data(conn: psycopg2.extensions.connection):
                 random.randint(0, 5), total_usd
             ))
         
-        cur.executemany("INSERT INTO ElectroWorld.purchases VALUES (%s, %s, %s, %s, %s)", purchases)
-        cur.executemany("INSERT INTO ElectroWorld.purchase_details (purchase_guid, item_sku, amount, price) VALUES (%s, %s, %s, %s)", purchase_details)
+        cur.executemany("INSERT INTO electroworld.purchases VALUES (%s, %s, %s, %s, %s)", purchases)
+        cur.executemany("INSERT INTO electroworld.purchase_details (purchase_guid, item_sku, amount, price) VALUES (%s, %s, %s, %s)", purchase_details)
         conn.commit()
     print(f"Магазин B: {len(clients)} клиентов, {len(items)} товаров, {len(purchases)} покупок сгенерировано.")
 
@@ -251,10 +270,10 @@ def generate_s3_data(s3_client):
     print("Генерация данных для S3...")
     # Product Reviews
     for i in range(300): # 300 отзывов
-        is_PrimeGoods = random.random() > 0.5
-        shop_id = "PrimeGoods" if is_PrimeGoods else "ElectroWorld"
-        product_id = str(random.choice(PrimeGoods_product_ids)) if is_PrimeGoods else random.choice(ElectroWorld_item_skus)
-        author_id = str(random.choice(PrimeGoods_customer_ids)) if is_PrimeGoods else str(random.choice(ElectroWorld_client_uuids))
+        is_primegoods = random.random() > 0.5
+        shop_id = "primegoods" if is_primegoods else "electroworld"
+        product_id = str(random.choice(primegoods_product_ids)) if is_primegoods else random.choice(electroworld_item_skus)
+        author_id = str(random.choice(primegoods_customer_ids)) if is_primegoods else str(random.choice(electroworld_client_uuids))
         
         review = {
             "review_id": f"rev-{uuid.uuid4()}",
@@ -271,7 +290,7 @@ def generate_s3_data(s3_client):
     # Supplier Feeds
     # Shop A - CSV
     supplier_a_data = []
-    for product_id in PrimeGoods_product_ids:
+    for product_id in primegoods_product_ids:
         supplier_a_data.append({
             'product_identifier': product_id,
             'supplier_name': random.choice(['SupplierX', 'SupplierY']),
@@ -280,12 +299,12 @@ def generate_s3_data(s3_client):
         })
     df_a = pd.DataFrame(supplier_a_data)
     csv_buffer = df_a.to_csv(index=False)
-    file_key_a = f"raw/supplier_feeds/PrimeGoods_suppliers/{datetime.now().strftime('%Y-%m-%d')}.csv"
+    file_key_a = f"raw/supplier_feeds/primegoods_suppliers/{datetime.now().strftime('%Y-%m-%d')}.csv"
     s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=file_key_a, Body=csv_buffer)
     
     # Shop B - Parquet
     supplier_b_data = []
-    for sku in ElectroWorld_item_skus:
+    for sku in electroworld_item_skus:
         supplier_b_data.append({
             'sku': sku,
             'inventory': random.randint(0, 100),
@@ -294,7 +313,7 @@ def generate_s3_data(s3_client):
         })
     df_b = pd.DataFrame(supplier_b_data)
     parquet_buffer = df_b.to_parquet(index=False)
-    file_key_b = f"raw/supplier_feeds/ElectroWorld_vendors/SuperElectronics/data.parquet"
+    file_key_b = f"raw/supplier_feeds/electroworld_vendors/SuperElectronics/data.parquet"
     s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=file_key_b, Body=parquet_buffer)
 
 
@@ -311,10 +330,10 @@ def generate_kafka_data(producer):
     # Clickstream events
     for _ in range(NUM_KAFKA_CLICKSTREAM_EVENTS):
         time.sleep(10)
-        is_PrimeGoods = random.random() > 0.5
-        shop_id = "PrimeGoods" if is_PrimeGoods else "ElectroWorld"
-        user_id = str(random.choice(PrimeGoods_customer_ids)) if is_PrimeGoods else str(random.choice(ElectroWorld_client_uuids))
-        product_id = str(random.choice(PrimeGoods_product_ids)) if is_PrimeGoods else random.choice(ElectroWorld_item_skus)
+        is_primegoods = random.random() > 0.5
+        shop_id = "primegoods" if is_primegoods else "electroworld"
+        user_id = str(random.choice(primegoods_customer_ids)) if is_primegoods else str(random.choice(electroworld_client_uuids))
+        product_id = str(random.choice(primegoods_product_ids)) if is_primegoods else random.choice(electroworld_item_skus)
         
         event = {
           "event_id": str(uuid.uuid4()),
@@ -331,7 +350,7 @@ def generate_kafka_data(producer):
         producer.send(KAFKA_CLICKSTREAM_TOPIC, event)
     
     # Order status updates
-    all_orders = [(o, 'PrimeGoods') for o in PrimeGoods_order_ids] + [(p, 'ElectroWorld') for p in ElectroWorld_purchase_guids]
+    all_orders = [(o, 'primegoods') for o in primegoods_order_ids] + [(p, 'electroworld') for p in electroworld_purchase_guids]
     for order_id, shop_name in random.sample(all_orders, k=min(len(all_orders), 100)):
         time.sleep(10)
         update = {
@@ -355,15 +374,15 @@ if __name__ == '__main__':
     pg_conn = get_pg_connection()
     print(type(pg_conn))
     setup_postgres_schemas(pg_conn)
-    generate_PrimeGoods_data(pg_conn)
-    generate_ElectroWorld_data(pg_conn)
+    generate_primegoods_data(pg_conn)
+    generate_electroworld_data(pg_conn)
     pg_conn.close()
     
     # Шаг 2: S3 (MinIO)
     s3_client = get_s3_client()
     generate_s3_data(s3_client)
 
-    # # Шаг 3: Kafka
+    # Шаг 3: Kafka
     # kafka_producer = get_kafka_producer()
     # generate_kafka_data(kafka_producer)
     

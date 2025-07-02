@@ -71,11 +71,17 @@ def setup_postgres_schemas(conn: psycopg2.extensions.connection):
         # Схема A
         cur.execute("CREATE SCHEMA IF NOT EXISTS primegoods;")
 
+        # cur.execute("""
+        #     drop table if exists primegoods.customers;
+        #     drop table if exists primegoods.products;
+        #     drop table if exists primegoods.orders;
+        #     drop table if exists primegoods.order_items;       
+        # """)
         cur.execute("""
-            drop table if exists primegoods.customers;
-            drop table if exists primegoods.products;
-            drop table if exists primegoods.orders;
-            drop table if exists primegoods.order_items;       
+            truncate table  primegoods.customers;
+            truncate table  primegoods.products;
+            truncate table  primegoods.orders;
+            truncate table  primegoods.order_items;       
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS primegoods.customers (
@@ -98,10 +104,10 @@ def setup_postgres_schemas(conn: psycopg2.extensions.connection):
         # Схема B
         cur.execute("CREATE SCHEMA IF NOT EXISTS electroworld;")
         cur.execute("""
-            drop table if exists primegoods.clients;
-            drop table if exists primegoods.items;
-            drop table if exists primegoods.purchases;
-            drop table if exists primegoods.purchase_details;       
+            truncate table  electroworld.clients;
+            truncate table  electroworld.items;
+            truncate table  electroworld.purchases;
+            truncate table  electroworld.purchase_details;        
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS electroworld.clients (
@@ -189,9 +195,81 @@ def generate_primegoods_data(conn: psycopg2.extensions.connection):
         cur.executemany("INSERT INTO primegoods.orders VALUES (%s, %s, %s, %s, %s)", orders)
         cur.executemany("INSERT INTO primegoods.order_items (order_id, product_id, quantity, price_per_unit) VALUES (%s, %s, %s, %s)", order_items)
         conn.commit()
+        # Получаем актуальные ID после начальной вставки
+        # cur.execute("SELECT order_id FROM primegoods.orders")
+        # primegoods_order_ids = [row[0] for row in cur.fetchall()]
     print(f"Магазин A: {len(customers)} клиентов, {len(products)} товаров, {len(orders)} заказов сгенерировано.")
 
+    
 
+    for customer_id in primegoods_customer_ids[:5]:
+        with conn.cursor() as update_cur:
+            update_cur.execute("""
+                UPDATE primegoods.customers 
+                SET email = %s, address = %s 
+                WHERE customer_id = %s
+            """, (fake.email(), fake.address(), customer_id))
+            conn.commit()
+            print(f"Обновлен клиент {customer_id}")
+            time.sleep(0.5)  # 500ms задержка
+
+        # Транзакция с изменением статусов заказов
+        try:
+            with conn.cursor() as update_cur:
+                for order_id, new_status in zip(primegoods_order_ids[::2], ['paid']*10):
+                    update_cur.execute("""
+                        UPDATE primegoods.orders 
+                        SET status = %s 
+                        WHERE order_id = %s
+                    """, (new_status, order_id))
+                    print(f"Заказ {order_id} переведен в {new_status}")
+                    time.sleep(1)  # 1 сек между обновлениями
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Ошибка: {e}")
+
+        # Транзакция с удалением
+        if primegoods_order_ids:
+            with conn.cursor() as delete_cur:
+                delete_id = primegoods_order_ids[-1]
+                delete_cur.execute("DELETE FROM primegoods.orders WHERE order_id = %s", (delete_id,))
+                conn.commit()
+                print(f"Удален заказ {delete_id}")
+                time.sleep(2)
+
+        # Долгая транзакция с несколькими изменениями
+
+        
+        with conn:
+            with conn.cursor() as cur:
+                # Получаем новый order_id из базы
+                cur.execute("SELECT MAX(order_id) FROM primegoods.orders")
+                current_max = cur.fetchone()[0]
+                new_order_id = current_max + 1 if current_max is not None else 1
+
+                # Добавление нового заказа с правильным ID
+                cur.execute("""
+                    INSERT INTO primegoods.orders 
+                    VALUES (%s, %s, NOW(), 'created', %s)
+                """, (new_order_id, random.choice(primegoods_customer_ids), Decimal('0')))
+                primegoods_order_ids.append(new_order_id)  # Обновляем список
+                print(f"Добавлен новый заказ {new_order_id}")
+                time.sleep(3)
+                # Изменение цены продукта
+                cur.execute("UPDATE primegoods.products SET price = price * 1.1 WHERE product_id = %s", 
+                        (primegoods_product_ids[0],))
+                time.sleep(1)
+                
+                # Добавление нового заказа
+                new_order_id = max(primegoods_order_ids) + 1 if primegoods_order_ids else 1
+                cur.execute("""
+                    INSERT INTO primegoods.orders 
+                    VALUES (%s, %s, NOW(), 'created', %s)
+                """, (new_order_id, random.choice(primegoods_customer_ids), Decimal('0')))
+                time.sleep(3)
+                
+        print("Все транзакционные изменения применены")
 def generate_electroworld_data(conn: psycopg2.extensions.connection):
     """Генерация данных для магазина B"""
     with conn.cursor() as cur:

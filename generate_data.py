@@ -71,18 +71,18 @@ def setup_postgres_schemas(conn: psycopg2.extensions.connection):
         # Схема A
         cur.execute("CREATE SCHEMA IF NOT EXISTS primegoods;")
 
-        # cur.execute("""
-        #     drop table if exists primegoods.customers;
-        #     drop table if exists primegoods.products;
-        #     drop table if exists primegoods.orders;
-        #     drop table if exists primegoods.order_items;       
-        # """)
         cur.execute("""
-            truncate table  primegoods.customers;
-            truncate table  primegoods.products;
-            truncate table  primegoods.orders;
-            truncate table  primegoods.order_items;       
+            drop table if exists primegoods.customers;
+            drop table if exists primegoods.products;
+            drop table if exists primegoods.orders;
+            drop table if exists primegoods.order_items;       
         """)
+        # cur.execute("""
+        #     truncate table  primegoods.customers;
+        #     truncate table  primegoods.products;
+        #     truncate table  primegoods.orders;
+        #     truncate table  primegoods.order_items;       
+        # """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS primegoods.customers (
                 customer_id SERIAL PRIMARY KEY, first_name VARCHAR, last_name VARCHAR,
@@ -103,12 +103,19 @@ def setup_postgres_schemas(conn: psycopg2.extensions.connection):
         """)
         # Схема B
         cur.execute("CREATE SCHEMA IF NOT EXISTS electroworld;")
+
         cur.execute("""
-            truncate table  electroworld.clients;
-            truncate table  electroworld.items;
-            truncate table  electroworld.purchases;
-            truncate table  electroworld.purchase_details;        
+            drop table if exists electroworld.clients;
+            drop table if exists electroworld.items;
+            drop table if exists electroworld.purchases;
+            drop table if exists electroworld.purchase_details;        
         """)
+        # cur.execute("""
+        #     truncate table  electroworld.clients;
+        #     truncate table  electroworld.items;
+        #     truncate table  electroworld.purchases;
+        #     truncate table  electroworld.purchase_details;        
+        # """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS electroworld.clients (
                 client_uuid UUID PRIMARY KEY, name VARCHAR, email VARCHAR,
@@ -229,14 +236,14 @@ def generate_primegoods_data(conn: psycopg2.extensions.connection):
             conn.rollback()
             print(f"Ошибка: {e}")
 
-        # Транзакция с удалением
-        if primegoods_order_ids:
-            with conn.cursor() as delete_cur:
-                delete_id = primegoods_order_ids[-1]
-                delete_cur.execute("DELETE FROM primegoods.orders WHERE order_id = %s", (delete_id,))
-                conn.commit()
-                print(f"Удален заказ {delete_id}")
-                time.sleep(2)
+        # # Транзакция с удалением
+        # if primegoods_order_ids:
+        #     with conn.cursor() as delete_cur:
+        #         delete_id = primegoods_order_ids[-1]
+        #         delete_cur.execute("DELETE FROM primegoods.orders WHERE order_id = %s", (delete_id,))
+        #         conn.commit()
+        #         print(f"Удален заказ {delete_id}")
+        #         time.sleep(2)
 
         # Долгая транзакция с несколькими изменениями
 
